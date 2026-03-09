@@ -1,0 +1,53 @@
+{
+  "name": "@dating/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.670.0",
+    "@aws-sdk/s3-request-presigner": "^3.670.0",
+    "@dating/db": "workspace:*",
+    "@dating/types": "workspace:*",
+    "@fastify/cookie": "^11.0.0",
+    "@fastify/cors": "^10.0.0",
+    "@fastify/helmet": "^13.0.0",
+    "@fastify/jwt": "^9.0.0",
+    "@fastify/multipart": "^9.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "@prisma/client": "^7.4.2",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "@types/africastalking": "^0.6.2",
+    "africastalking": "^0.5.0",
+    "axios": "^1.7.0",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.17.0",
+    "crypto-js": "^4.2.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.0",
+    "fastify": "^5.1.0",
+    "ioredis": "^5.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "livekit-server-sdk": "^2.7.0",
+    "openai": "^4.67.0",
+    "pino": "^9.4.0",
+    "pino-pretty": "^13.0.0",
+    "socket.io": "^4.8.0",
+    "ua-parser-js": "^1.0.39",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/crypto-js": "^4.2.2",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.0.0",
+    "@types/ua-parser-js": "^0.7.39",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
