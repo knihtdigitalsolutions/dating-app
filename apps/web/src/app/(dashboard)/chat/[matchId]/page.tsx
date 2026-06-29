@@ -20,7 +20,7 @@ export default function ChatPage() {
   const [text, setText] = useState('')
   const [theyTyping, setTheyTyping] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
-  const typingTimer = useRef<any>()
+  const typingTimer = useRef<any>(undefined)
 
   const { data, isLoading } = useQuery({
     queryKey: ['chat', matchId],
@@ -105,7 +105,7 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col overflow-hidden border-l border-border-subtle">
 
         {/* Header */}
-        <div className="flex items-center gap-4 px-5 py-4 border-b border-border-subtle bg-surface-raised flex-shrink-0">
+        <div className="flex items-center gap-4 px-5 py-4 border-b border-border-subtle bg-surface-raised shrink-0">
           {other?.photo ? (
             <img src={other.photo} alt="" className="w-10 h-10 rounded-full object-cover border border-border-subtle" />
           ) : (
@@ -148,7 +148,7 @@ export default function ChatPage() {
                 <motion.div key={msg.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                   className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-xs lg:max-w-md rounded-2xl px-4 py-2.5 ${mine ? 'bg-gold-500 text-white rounded-tr-sm' : 'bg-surface-raised text-gray-200 rounded-tl-sm border border-border-subtle'}`}>
-                    <p className="text-sm leading-relaxed break-words">{msg.content}</p>
+                    <p className="text-sm leading-relaxed wrap-break-word">{msg.content}</p>
                     <p className={`text-xs mt-1 ${mine ? 'text-white/60 text-right' : 'text-gray-600'}`}>
                       {format(new Date(msg.createdAt), 'HH:mm')}
                       {mine && (msg.isRead ? ' ✓✓' : ' ✓')}
@@ -182,11 +182,11 @@ export default function ChatPage() {
             onChange={e => handleType(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
             placeholder={`Message ${other?.displayName || ''}...`}
-            className="input flex-1 resize-none min-h-[44px] max-h-32 py-2.5"
+            className="input flex-1 resize-none min-h-11 max-h-32 py-2.5"
             rows={1}
           />
           <button onClick={send} disabled={!text.trim() || sendMutation.isPending}
-            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0"
             style={{ background: text.trim() ? 'var(--color-gold-500)' : 'var(--color-surface-overlay)', opacity: text.trim() ? 1 : 0.5 }}>
             ↑
           </button>
@@ -204,7 +204,7 @@ function MatchesSidebar({ activeMatchId }: { activeMatchId: string }) {
   })
 
   return (
-    <div className="w-72 flex-shrink-0 flex flex-col border-r border-border-subtle">
+    <div className="w-72 shrink-0 flex flex-col border-r border-border-subtle">
       <div className="p-4 border-b border-border-subtle">
         <p className="text-white font-semibold">Messages</p>
       </div>
@@ -212,7 +212,7 @@ function MatchesSidebar({ activeMatchId }: { activeMatchId: string }) {
         {matches.map((match: any) => (
           <Link key={match.id} href={`/chat/${match.id}`}>
             <div className={`flex items-center gap-3 px-4 py-3 hover:bg-surface-raised transition-colors ${activeMatchId === match.id ? 'bg-surface-raised border-r-2 border-gold-500' : ''}`}>
-              <div className="relative w-10 h-10 rounded-full overflow-hidden bg-surface-overlay flex-shrink-0 border border-border-subtle">
+              <div className="relative w-10 h-10 rounded-full overflow-hidden bg-surface-overlay shrink-0 border border-border-subtle">
                 {match.other.photo ? <img src={match.other.photo} alt="" className="w-full h-full object-cover" /> : <span className="text-lg flex items-center justify-center w-full h-full">👤</span>}
                 {match.other.isOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-success border border-surface-base" />}
               </div>
@@ -221,7 +221,7 @@ function MatchesSidebar({ activeMatchId }: { activeMatchId: string }) {
                 <p className="text-gray-500 text-xs truncate">{match.lastMessage?.content || 'Say hello!'}</p>
               </div>
               {match.lastMessage && !match.lastMessage.isRead && !match.lastMessage.isMine && (
-                <span className="w-2 h-2 rounded-full bg-gold-500 flex-shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-gold-500 shrink-0" />
               )}
             </div>
           </Link>
