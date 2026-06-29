@@ -21,11 +21,5 @@
     "db:migrate": {
       "cache": false
     }
-  },
-  "pipeline": {
-    "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
-    }
   }
 }
