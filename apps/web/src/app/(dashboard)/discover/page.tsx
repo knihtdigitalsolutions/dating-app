@@ -48,7 +48,7 @@ export default function DiscoverPage() {
 
       {/* Card area */}
       <div className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
-        <div className="relative w-full max-w-sm h-[540px]">
+        <div className="relative w-full max-w-sm h-135">
           {remaining === 0 ? (
             <EmptyState onRefresh={() => { setIndex(0); qc.invalidateQueries({ queryKey: ['discover'] }) }} />
           ) : (
@@ -100,7 +100,7 @@ function SwipeCard({ profile, isTop, onSwipe }: { profile: ProfileCard; isTop: b
 
   return (
     <motion.div
-      style={{ x, rotate, position: 'absolute', width: '100%', height: '100%' }}
+      style={{ x, rotate, position: 'absolute', width: '100%', height: '100%',  zIndex: isTop ? 10 : 1 as any }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
       onDragEnd={handleDragEnd}
@@ -108,7 +108,6 @@ function SwipeCard({ profile, isTop, onSwipe }: { profile: ProfileCard; isTop: b
       animate={{ scale: isTop ? 1 : 0.95, y: isTop ? 0 : 12 }}
       exit={{ x: x.get() > 0 ? 500 : -500, opacity: 0, transition: { duration: 0.3 } }}
       className="rounded-3xl overflow-hidden select-none cursor-grab bg-surface-raised"
-      style={{ zIndex: isTop ? 10 : 1 } as any}
     >
       {/* Photo */}
       <div className="relative w-full h-full">
