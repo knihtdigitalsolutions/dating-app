@@ -51,14 +51,27 @@ export default async function profileRoutes(app: FastifyInstance) {
       return reply.status(409).send({ success: false, error: 'Profile already exists' })
     }
 
-    const profile = await prisma.profile.create({
-      data: {
-        ...body.data,
-        birthDate: new Date(body.data.birthDate),
-        userId: req.userId,
-        interestedIn: body.data.interestedIn as any[],
-      },
-    })
+    const { birthDate, interestedIn, ...rest } = body.data
+
+  const profile = await prisma.profile.create({
+    data: {
+      displayName: body.data.displayName,
+      bio: body.data.bio,
+      age: body.data.age,
+      gender: body.data.gender,
+      interests: body.data.interests ?? [],
+      lookingFor: body.data.lookingFor,
+      height: body.data.height,
+      occupation: body.data.occupation,
+      education: body.data.education,
+      latitude: body.data.latitude,
+      longitude: body.data.longitude,
+      locationName: body.data.locationName,
+      birthDate: new Date(birthDate),
+      interestedIn: interestedIn as any[],
+      user: { connect: { id: req.userId } },
+    },
+  })
 
     // Generate AI embedding async
     generateProfileEmbedding(profile.id)
