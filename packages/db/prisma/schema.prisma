@@ -195,7 +195,7 @@ model Photo {
   profileId   String   @db.Uuid
   profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   url         String   // Cloudflare R2 signed URL base
-  r2Key       String   // R2 object key
+  storageKey  String   // storage object key
   order       Int      @default(0)
   isMain      Boolean  @default(false)
   isVerified  Boolean  @default(false) // passed content moderation

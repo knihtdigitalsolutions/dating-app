@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { prisma } from '@dating/db'
 import { authenticate } from '../middleware/auth'
+import { presignUpload, publicUrl, storageKey } from '../services/storage'
 
 export async function callRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
@@ -22,38 +23,17 @@ export async function callRoutes(app: FastifyInstance) {
 export async function uploadRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
 
-  // Returns a presigned R2 URL for direct upload
+  // Returns a presigned Supabase Storage URL for direct upload
   app.post('/presign', async (req, reply) => {
-    const { filename, contentType, folder = 'photos' } = req.body as any
-
-    const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3')
-    const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner')
-
-    const s3 = new S3Client({
-      region: 'auto',
-      endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      },
-    })
-
-    const key = `${folder}/${req.userId}/${Date.now()}-${filename}`
-    const command = new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME!,
-      Key: key,
-      ContentType: contentType,
-    })
-
-    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 })
-    const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`
-
-    return reply.send({ success: true, data: { uploadUrl, key, publicUrl } })
+    const { filename, contentType, folder = 'recordings' } = req.body as any
+    const key = storageKey(folder, req.userId, filename)
+    const uploadUrl = await presignUpload(key, contentType)
+    return reply.send({ success: true, data: { uploadUrl, key, publicUrl: publicUrl(key) } })
   })
 
   // Register photo after upload
   app.post('/photos/confirm', async (req, reply) => {
-    const { r2Key, url, order, isMain } = req.body as any
+    const { storageKey: key, url, order, isMain } = req.body as any
 
     const profile = await prisma.profile.findUnique({ where: { userId: req.userId } })
     if (!profile) return reply.status(404).send({ success: false, error: 'Profile not found' })
@@ -63,7 +43,7 @@ export async function uploadRoutes(app: FastifyInstance) {
     }
 
     const photo = await prisma.photo.create({
-      data: { profileId: profile.id, r2Key, url, order: order || 0, isMain: isMain || false },
+      data: { profileId: profile.id, storageKey: key, url, order: order || 0, isMain: isMain || false },
     })
 
     // Moderate async

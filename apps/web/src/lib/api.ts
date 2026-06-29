@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuthStore } from '@/lib/store/auth'
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -12,7 +13,7 @@ export const api = axios.create({
 // Attach access token from store on every request
 api.interceptors.request.use(async (config) => {
   // Lazy import to avoid circular dependencies
-  const { useAuthStore } = await import('@/lib/store/auth')
+  // const { useAuthStore } = await import('@/lib/store/auth')
   const token = useAuthStore.getState().accessToken
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
@@ -33,7 +34,6 @@ api.interceptors.response.use(
       }
       orig._retry = true
       isRefreshing = true
-      const { useAuthStore } = await import('@/lib/store/auth')
       const ok = await useAuthStore.getState().refreshToken()
       isRefreshing = false
       if (ok) {

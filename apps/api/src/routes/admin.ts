@@ -3,6 +3,7 @@ import { prisma } from '@dating/db'
 
 export default async function adminRoutes(app: FastifyInstance) {
   app.get('/stats', async (req, reply) => {
+    console.log(req)
     const [users, matches, activeSubscriptions] = await Promise.all([
       prisma.user.count(),
       prisma.match.count(),
@@ -12,6 +13,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   })
 
   app.get('/reports', async (req, reply) => {
+    console.log(req)
     const reports = await prisma.report.findMany({
       where: { status: 'PENDING' },
       orderBy: { createdAt: 'desc' },

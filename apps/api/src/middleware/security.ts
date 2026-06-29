@@ -10,8 +10,6 @@
 
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { isIpBlocked, logSecurityEvent } from '../services/security'
-import { redis } from '../lib/redis'
-import { logger } from '../lib/logger'
 import crypto from 'crypto'
 
 declare module 'fastify' {

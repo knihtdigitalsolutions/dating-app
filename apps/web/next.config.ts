@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: ['local-origin.dev', '*.local-origin.dev', '192.168.56.1'],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'media.dating.app' },
