@@ -2,9 +2,5 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/(.*)", "destination": "/dating.html" }
-  ],
-  "scripts": {
-    "postinstall": "prisma generate",
-    "build": "prisma generate && tsc"
-  }
+  ]
 }
