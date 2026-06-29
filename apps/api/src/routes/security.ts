@@ -10,15 +10,14 @@
  */
 
 import { FastifyInstance } from 'fastify'
-import { z } from 'zod'
 import { prisma } from '@dating/db'
-import { authenticate, requirePlan } from '../middleware/auth'
+import { authenticate } from '../middleware/auth'
 import { getClientIp } from '../middleware/security'
 import {
   logSecurityEvent,
   getSecurityDashboard,
-  getUserActivityLog,
 } from '../services/security'
+import { redis } from '../lib/redis'
 
 export default async function securityRoutes(app: FastifyInstance) {
 

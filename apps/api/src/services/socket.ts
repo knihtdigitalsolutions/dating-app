@@ -245,7 +245,7 @@ async function getUserMatchIds(userId: string): Promise<string[]> {
     where: { OR: [{ user1Id: userId }, { user2Id: userId }], isActive: true },
     select: { user1Id: true, user2Id: true },
   })
-  return matches.map((m) => (m.user1Id === userId ? m.user2Id : m.user1Id))
+  return matches.map((m: any) => (m.user1Id === userId ? m.user2Id : m.user1Id))
 }
 
 async function getOtherUserId(matchId: string, userId: string): Promise<string | null> {

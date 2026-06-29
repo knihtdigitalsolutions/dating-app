@@ -49,8 +49,8 @@ export default async function matchRoutes(app: FastifyInstance) {
 
     const excludeIds = [
       userId,
-      ...swipedIds.map((s) => s.swipedId),
-      ...blockedIds.map((b) => b.blockerId === userId ? b.blockedId : b.blockerId),
+      ...swipedIds.map((s: any) => s.swipedId),
+      ...blockedIds.map((b: any) => b.blockerId === userId ? b.blockedId : b.blockerId),
     ]
 
     const profiles = await prisma.profile.findMany({
@@ -70,7 +70,7 @@ export default async function matchRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
     })
 
-    const cards = profiles.map((p) => ({
+    const cards = profiles.map((p: any) => ({
       id: p.id,
       userId: p.userId,
       displayName: p.displayName,
@@ -80,8 +80,8 @@ export default async function matchRoutes(app: FastifyInstance) {
       interests: p.interests,
       locationName: p.locationName,
       verificationStatus: p.verificationStatus,
-      photos: p.photos.map((ph) => ({ url: ph.url, order: ph.order })),
-      videos: p.videos.map((v) => ({ streamVideoId: v.streamVideoId, thumbnailUrl: v.thumbnailUrl })),
+      photos: p.photos.map((ph: any) => ({ url: ph.url, order: ph.order })),
+      videos: p.videos.map((v: any) => ({ streamVideoId: v.streamVideoId, thumbnailUrl: v.thumbnailUrl })),
       isOnline: isOnline(p.user.lastSeen),
     }))
 
@@ -188,7 +188,7 @@ export default async function matchRoutes(app: FastifyInstance) {
       orderBy: { lastMessageAt: { sort: 'desc', nulls: 'last' } },
     })
 
-    const formatted = matches.map((m) => {
+    const formatted = matches.map((m: any) => {
       const other = m.user1Id === userId ? m.user2 : m.user1
       return {
         id: m.id,

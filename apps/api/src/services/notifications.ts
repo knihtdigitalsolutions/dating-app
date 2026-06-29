@@ -19,7 +19,7 @@ export async function sendPushNotification(userId: string, notification: Omit<Pu
     const tokens = await prisma.pushToken.findMany({ where: { userId } })
     if (!tokens.length) return
 
-    const messages = tokens.map((t) => ({
+    const messages = tokens.map((t: any) => ({
       to: t.token,
       ...notification,
       sound: 'default' as const,
