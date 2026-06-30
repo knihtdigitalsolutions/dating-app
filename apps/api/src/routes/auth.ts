@@ -73,7 +73,7 @@ export default async function authRoutes(app: FastifyInstance) {
     const ip  = getClientIp(req)
     const ua  = req.headers['user-agent'] as string
     const ctx = (req as any).securityCtx
-
+    
     const body = requestOtpSchema.safeParse(req.body)
     if (!body.success) {
       return reply.status(400).send({ success: false, error: body.error.errors[0].message })
@@ -255,7 +255,7 @@ export default async function authRoutes(app: FastifyInstance) {
       user.subscription?.plan || 'FREE',
       req
     )
-
+    
     await registerDeviceSession({
       userId: user.id,
       sessionId,
@@ -283,18 +283,29 @@ export default async function authRoutes(app: FastifyInstance) {
     // 🌟 SECURE INJECTION: Stream tokens directly into HttpOnly Cookies
     setAuthCookies(reply, accessToken, refreshToken)
 
-    // Return safely sanitized telemetry back to Zustand UI state tracking
-    return reply.send({
-      success: true,
-      data: {
-        user: {
-          id: user.id,
-          phone: user.phone,
-          hasProfile: !!user.profile,
-          plan: user.subscription?.plan || 'FREE',
-        },
-      },
-    })
+    // Inside your /otp/verify endpoint right after createSession()...
+
+    const isMobile = req.headers['x-client-platform'] === 'mobile'
+
+    if (isMobile) {
+      // Mobile Route: Do not drop cookies, return plain text payload for Expo secure store
+      return reply.send({
+        success: true,
+        data: {
+          tokens: { accessToken, refreshToken },
+          user: { id: user.id, phone: user.phone, hasProfile: !!user.profile, plan: user.subscription?.plan || 'FREE' }
+        }
+      })
+    } else {
+      // Web Route: Stream secure cookies, keep tokens invisible to client-side scripts
+      setAuthCookies(reply, accessToken, refreshToken)
+      return reply.send({
+        success: true,
+        data: {
+          user: { id: user.id, phone: user.phone, hasProfile: !!user.profile, plan: user.subscription?.plan || 'FREE' }
+        }
+      })
+    }
   })
 
   // ── POST /auth/refresh ──────────────────────────────────
@@ -303,8 +314,8 @@ export default async function authRoutes(app: FastifyInstance) {
     const ua  = req.headers['user-agent'] as string
     const ctx = (req as any).securityCtx
 
-    // 🌟 SECURE INJECTION: Read the token from cookies instead of the request body
-    const refreshToken = req.cookies?.refresh_token
+    // 🌟 UNIFIED CAPTURE: Read from request body for Mobile, or fallback to Cookies for Web
+    const refreshToken = (req.body as any)?.refreshToken || req.cookies?.refresh_token
 
     if (!refreshToken) {
       return reply.status(401).send({ success: false, error: 'No refresh token provided.', code: 'NO_TOKEN' })
@@ -349,11 +360,22 @@ export default async function authRoutes(app: FastifyInstance) {
         eventType: 'TOKEN_REFRESHED', severity: 'INFO', riskScore: 0,
         description: 'Access token refreshed successfully',
       })
+      // 🌟 UNIFIED RESPONSE: Branch logic based on client platform header
+      const isMobile = req.headers['x-client-platform'] === 'mobile'
 
-      // 🌟 SECURE INJECTION: Push rotated tokens back into cookies
-      setAuthCookies(reply, accessToken, newRefreshToken)
-
-      return reply.send({ success: true })
+      if (isMobile) {
+        // Mobile execution track: Return tokens directly inside JSON block for Expo SecureStore
+        return reply.send({
+          success: true,
+          data: { 
+            tokens: { accessToken, refreshToken: newRefreshToken } 
+          },
+        })
+      } else {
+        // Web execution track: Inject rotated tokens into HttpOnly cookies
+        setAuthCookies(reply, accessToken, newRefreshToken)
+        return reply.send({ success: true })
+      }
     } catch {
       await logSecurityEvent({
         ipAddress: ip, userAgent: ua, platform: ctx?.platform,

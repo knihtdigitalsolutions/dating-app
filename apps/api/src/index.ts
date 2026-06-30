@@ -31,7 +31,7 @@ import securityRoutes     from './routes/security'
 import { registerSocketHandlers } from './services/socket'
 
 const PORT = Number(process.env.PORT) || 4000
-
+// console.log(PORT)
 async function bootstrap() {
   const app = Fastify({
     logger: false,
@@ -68,7 +68,7 @@ async function bootstrap() {
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Device-ID', 'X-Expo-Platform'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Device-ID', 'X-Expo-Platform', 'x-client-platform'],
   })
 
   // ── 3. Cookies ────────────────────────────────────────────
@@ -103,17 +103,17 @@ async function bootstrap() {
   })
 
   // ── 7. Routes ─────────────────────────────────────────────
-  await app.register(webhookRoutes,      { prefix: '/webhooks' })
-  await app.register(authRoutes,         { prefix: '/auth' })
-  await app.register(profileRoutes,      { prefix: '/profiles' })
-  await app.register(matchRoutes,        { prefix: '/matches' })
-  await app.register(messageRoutes,      { prefix: '/messages' })
-  await app.register(callRoutes,         { prefix: '/calls' })
-  await app.register(paymentRoutes,      { prefix: '/payments' })
-  await app.register(uploadRoutes,       { prefix: '/uploads' })
-  await app.register(notificationRoutes, { prefix: '/notifications' })
-  await app.register(securityRoutes,     { prefix: '/security' })
-  await app.register(adminRoutes,        { prefix: '/admin' })
+  await app.register(webhookRoutes,      { prefix: '/api/webhooks' })
+  await app.register(authRoutes,         { prefix: '/api/auth' })
+  await app.register(profileRoutes,      { prefix: '/api/profiles' })
+  await app.register(matchRoutes,        { prefix: '/api/matches' })
+  await app.register(messageRoutes,      { prefix: '/api/messages' })
+  await app.register(callRoutes,         { prefix: '/api/calls' })
+  await app.register(paymentRoutes,      { prefix: '/api/payments' })
+  await app.register(uploadRoutes,       { prefix: '/api/uploads' })
+  await app.register(notificationRoutes, { prefix: '/api/notifications' })
+  await app.register(securityRoutes,     { prefix: '/api/security' })
+  await app.register(adminRoutes,        { prefix: '/api/admin' })
 
   // ── 8. Health ──────────────────────────────────────────────
   app.get('/health', async () => ({
@@ -133,7 +133,7 @@ async function bootstrap() {
   })
 
   // ── 10. Socket.io ──────────────────────────────────────────
-  await Promise.all([pubClient.connect(), subClient.connect()])
+  // await Promise.all([pubClient.connect(), subClient.connect()])
 
   const io = new SocketServer(httpServer, {
     cors: {
@@ -145,17 +145,23 @@ async function bootstrap() {
     pingTimeout: 20000,
     pingInterval: 25000,
   })
-
+  
   registerSocketHandlers(io)
 
   // ── 11. Start ──────────────────────────────────────────────
   await app.ready()
-  httpServer.listen(PORT, '0.0.0.0', () => {
+
+  // 🌟 UPDATED: Native Fastify listener block optimized for Railway health checks
+  try {
+    await app.listen({ port: PORT, host: '0.0.0.0' })
+    console.log(PORT)
     logger.info(`🚀 API: http://0.0.0.0:${PORT}`)
     logger.info(`🔐 Security middleware: active`)
     logger.info(`🌍 Environment: ${process.env.NODE_ENV}`)
-  })
-
+  } catch (err) {
+    logger.error(err, 'Failed to bind server port connection')
+    process.exit(1)
+  }
   const shutdown = async (sig: string) => {
     logger.info(`${sig} — graceful shutdown`)
     await app.close()

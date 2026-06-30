@@ -11,6 +11,35 @@ declare module 'fastify' {
 }
 
 export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
+  // 1. Try pulling token from the mobile header, fall back to the web cookie
+  const authHeader = req.headers.authorization
+  const token = authHeader?.startsWith('Bearer ') 
+    ? authHeader.slice(7) 
+    : req.cookies?.access_token
+
+  if (!token) {
+    return reply.status(401).send({ 
+      success: false, 
+      error: 'Authentication token required.', 
+      code: 'UNAUTHORIZED' 
+    })
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { sub: string; plan: string }
+    
+    // Attach authorization telemetry to request state
+    req.userId = decoded.sub
+    req.userPlan = decoded.plan
+  } catch (err) {
+    return reply.status(401).send({ 
+      success: false, 
+      error: 'Token has expired or is corrupt.', 
+      code: 'INVALID_TOKEN' 
+    })
+  }
+}
+export async function authenticat(req: FastifyRequest, reply: FastifyReply) {
   try {
     const authHeader = req.headers.authorization
     if (!authHeader?.startsWith('Bearer ')) {
