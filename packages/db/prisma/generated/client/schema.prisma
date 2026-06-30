@@ -1,0 +1,676 @@
+// Dating App — Prisma Schema
+// PostgreSQL + pgvector (AI matching)
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "postgresqlExtensions"]
+  output          = "./generated/client"
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector, pgcrypto]
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  OTHER
+}
+
+enum SwipeAction {
+  LIKE
+  PASS
+  SUPER_LIKE
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  VOICE
+  GIF
+  SYSTEM
+}
+
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  ACTIVE
+  ENDED
+  MISSED
+  DECLINED
+}
+
+enum SubscriptionPlan {
+  FREE
+  GOLD
+  PLATINUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PENDING
+}
+
+enum PaymentMethod {
+  MTN_MOBILE_MONEY
+  AIRTEL_MONEY
+  MPESA
+  VISA
+  MASTERCARD
+}
+
+enum ReportReason {
+  FAKE_PROFILE
+  INAPPROPRIATE_CONTENT
+  HARASSMENT
+  SPAM
+  UNDERAGE
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum BoostType {
+  PROFILE_BOOST
+  SUPER_LIKE_PACK
+  ROSE
+}
+
+// ─────────────────────────────────────────
+// USER & PROFILE
+// ─────────────────────────────────────────
+
+model User {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phone     String?  @unique
+  email     String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastSeen  DateTime @default(now())
+  isActive  Boolean  @default(true)
+  isBanned  Boolean  @default(false)
+  banReason String?
+
+  // Relations
+  profile         Profile?
+  sessions        Session[]
+  otpCodes        OtpCode[]
+  subscription    Subscription?
+  swipesGiven     Swipe[]         @relation("SwiperRelation")
+  swipesReceived  Swipe[]         @relation("SwipedRelation")
+  matchesAs1      Match[]         @relation("MatchUser1")
+  matchesAs2      Match[]         @relation("MatchUser2")
+  messagesSent    Message[]
+  callsInitiated  Call[]          @relation("CallerRelation")
+  callsReceived   Call[]          @relation("CalleeRelation")
+  reportsGiven    Report[]        @relation("ReporterRelation")
+  reportsReceived Report[]        @relation("ReportedRelation")
+  blocksGiven     Block[]         @relation("BlockerRelation")
+  blocksReceived  Block[]         @relation("BlockedRelation")
+  payments        Payment[]
+  boosts          Boost[]
+  notifications   Notification[]
+  pushTokens      PushToken[]
+  securityEvents  SecurityEvent[]
+  deviceSessions  DeviceSession[]
+  dataRequests    DataRequest[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([createdAt])
+}
+
+model Profile {
+  id                 String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String                       @unique @db.Uuid
+  user               User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName        String
+  bio                String?                      @db.Text
+  age                Int
+  birthDate          DateTime
+  gender             Gender
+  interestedIn       Gender[]
+  height             Int? // cm
+  occupation         String?
+  education          String?
+  religion           String?
+  drinking           String?
+  smoking            String?
+  children           String?
+  languages          String[]
+  interests          String[] // tags: hiking, music, etc
+  lookingFor         String?
+  // Location (PostGIS point)
+  latitude           Float?
+  longitude          Float?
+  locationName       String? // "Kampala, Uganda"
+  locationPrivacy    Boolean                      @default(false) // hide exact location
+  // Media
+  photos             Photo[]
+  videos             Video[]
+  // Verification
+  verificationStatus VerificationStatus           @default(UNVERIFIED)
+  verifiedAt         DateTime?
+  // AI embedding for matchmaking (pgvector)
+  embedding          Unsupported("vector(1536)")?
+  embeddingUpdatedAt DateTime?
+  // Stats
+  likesReceived      Int                          @default(0)
+  superLikesReceived Int                          @default(0)
+  profileViews       Int                          @default(0)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  @@index([age])
+  @@index([gender])
+  @@index([userId])
+}
+
+model Photo {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId  String   @db.Uuid
+  profile    Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  url        String // Cloudflare R2 signed URL base
+  storageKey String // storage object key
+  order      Int      @default(0)
+  isMain     Boolean  @default(false)
+  isVerified Boolean  @default(false) // passed content moderation
+  createdAt  DateTime @default(now())
+
+  @@index([profileId])
+}
+
+model Video {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId     String   @db.Uuid
+  profile       Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  streamVideoId String // Cloudflare Stream ID
+  thumbnailUrl  String?
+  duration      Int? // seconds
+  isProcessed   Boolean  @default(false)
+  isVerified    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([profileId])
+}
+
+// ─────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────
+
+model Session {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @db.Uuid
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String    @unique
+  deviceInfo   String?
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model OtpCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?   @db.Uuid
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone     String
+  code      String // hashed
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([phone])
+}
+
+// ─────────────────────────────────────────
+// MATCHING
+// ─────────────────────────────────────────
+
+model Swipe {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  swiperId  String      @db.Uuid
+  swiper    User        @relation("SwiperRelation", fields: [swiperId], references: [id], onDelete: Cascade)
+  swipedId  String      @db.Uuid
+  swiped    User        @relation("SwipedRelation", fields: [swipedId], references: [id], onDelete: Cascade)
+  action    SwipeAction
+  createdAt DateTime    @default(now())
+
+  @@unique([swiperId, swipedId])
+  @@index([swiperId])
+  @@index([swipedId])
+  @@index([action])
+}
+
+model Match {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user1Id            String    @db.Uuid
+  user1              User      @relation("MatchUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2Id            String    @db.Uuid
+  user2              User      @relation("MatchUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  compatibilityScore Float? // 0–1 from AI embedding similarity
+  isActive           Boolean   @default(true)
+  isSuperMatch       Boolean   @default(false)
+  matchedAt          DateTime  @default(now())
+  lastMessageAt      DateTime?
+  messages           Message[]
+  calls              Call[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id])
+  @@index([user2Id])
+  @@index([matchedAt])
+}
+
+// ─────────────────────────────────────────
+// MESSAGING
+// ─────────────────────────────────────────
+
+model Message {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId   String      @db.Uuid
+  match     Match       @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  senderId  String      @db.Uuid
+  sender    User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  type      MessageType @default(TEXT)
+  content   String?     @db.Text // encrypted (E2E: stored as ciphertext)
+  mediaUrl  String? // R2 key for image/voice
+  duration  Int? // seconds for voice notes
+  isRead    Boolean     @default(false)
+  readAt    DateTime?
+  deletedAt DateTime? // soft delete
+  createdAt DateTime    @default(now())
+
+  @@index([matchId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────
+// CALLS
+// ─────────────────────────────────────────
+
+model Call {
+  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId   String     @db.Uuid
+  match     Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  callerId  String     @db.Uuid
+  caller    User       @relation("CallerRelation", fields: [callerId], references: [id], onDelete: Cascade)
+  calleeId  String     @db.Uuid
+  callee    User       @relation("CalleeRelation", fields: [calleeId], references: [id], onDelete: Cascade)
+  type      CallType
+  status    CallStatus @default(RINGING)
+  roomName  String? // LiveKit room name
+  startedAt DateTime?
+  endedAt   DateTime?
+  duration  Int? // seconds
+  createdAt DateTime   @default(now())
+
+  @@index([matchId])
+  @@index([callerId])
+  @@index([calleeId])
+}
+
+// ─────────────────────────────────────────
+// PAYMENTS & SUBSCRIPTIONS
+// ─────────────────────────────────────────
+
+model Subscription {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String             @unique @db.Uuid
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan               SubscriptionPlan   @default(FREE)
+  status             SubscriptionStatus @default(ACTIVE)
+  autoRenew          Boolean            @default(true)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelledAt        DateTime?
+  payments           Payment[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Payment {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String         @db.Uuid
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionId     String?        @db.Uuid
+  subscription       Subscription?  @relation(fields: [subscriptionId], references: [id])
+  // PesaPal fields
+  pesapalOrderId     String?        @unique // our internal order ID
+  pesapalTrackingId  String?        @unique // PesaPal's tracking ID
+  pesapalMerchantRef String?        @unique
+  amount             Float
+  currency           String         @default("UGX")
+  method             PaymentMethod?
+  status             String         @default("PENDING") // PENDING|COMPLETED|FAILED|REFUNDED
+  description        String?
+  idempotencyKey     String         @unique @default(dbgenerated("gen_random_uuid()"))
+  webhookVerified    Boolean        @default(false)
+  rawWebhook         Json? // store raw webhook for audit
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([pesapalOrderId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────
+// BOOSTS & PREMIUM FEATURES
+// ─────────────────────────────────────────
+
+model Boost {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      BoostType
+  expiresAt DateTime
+  isUsed    Boolean   @default(false)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// SAFETY
+// ─────────────────────────────────────────
+
+model Report {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId  String       @db.Uuid
+  reporter    User         @relation("ReporterRelation", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedId  String       @db.Uuid
+  reported    User         @relation("ReportedRelation", fields: [reportedId], references: [id], onDelete: Cascade)
+  reason      ReportReason
+  description String?      @db.Text
+  status      ReportStatus @default(PENDING)
+  adminNote   String?
+  resolvedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([reporterId])
+  @@index([reportedId])
+  @@index([status])
+}
+
+model Block {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  blockerId String   @db.Uuid
+  blocker   User     @relation("BlockerRelation", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String   @db.Uuid
+  blocked   User     @relation("BlockedRelation", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATIONS & PUSH
+// ─────────────────────────────────────────
+
+model Notification {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // MATCH | MESSAGE | LIKE | SUPER_LIKE | CALL | SYSTEM
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model PushToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String // ios | android | web
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// SECURITY & ACTIVITY LOGS
+// ─────────────────────────────────────────
+
+enum SecurityEventType {
+  // Authentication
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGOUT
+  OTP_REQUESTED
+  OTP_VERIFIED
+  OTP_FAILED
+  OTP_EXPIRED
+  TOKEN_REFRESHED
+  TOKEN_REVOKED
+  SESSION_CREATED
+  SESSION_EXPIRED
+  SESSION_REVOKED
+  CONCURRENT_SESSION_DETECTED
+
+  // Account security
+  ACCOUNT_LOCKED
+  ACCOUNT_UNLOCKED
+  ACCOUNT_BANNED
+  ACCOUNT_SUSPENDED
+  PHONE_CHANGED
+  EMAIL_CHANGED
+  PROFILE_UPDATED
+  PASSWORD_RESET_REQUESTED
+
+  // Access control
+  UNAUTHORIZED_ACCESS
+  FORBIDDEN_RESOURCE
+  RATE_LIMIT_HIT
+  SUSPICIOUS_ACTIVITY
+  IP_BLOCKED
+  DEVICE_FINGERPRINT_MISMATCH
+
+  // Data events
+  PROFILE_VIEWED
+  PROFILE_EXPORTED
+  ACCOUNT_DELETED
+  DATA_DOWNLOAD_REQUESTED
+
+  // Payment events
+  PAYMENT_INITIATED
+  PAYMENT_COMPLETED
+  PAYMENT_FAILED
+  PAYMENT_REFUNDED
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_EXPIRED
+
+  // Admin actions
+  ADMIN_LOGIN
+  ADMIN_USER_VIEWED
+  ADMIN_USER_BANNED
+  ADMIN_USER_UNBANNED
+  ADMIN_REPORT_RESOLVED
+  ADMIN_CONTENT_REMOVED
+
+  // Content moderation
+  PHOTO_FLAGGED
+  PHOTO_REJECTED
+  MESSAGE_FLAGGED
+  REPORT_SUBMITTED
+  REPORT_ACTIONED
+
+  // Real-time
+  CALL_INITIATED
+  CALL_ANSWERED
+  CALL_ENDED
+  CALL_DECLINED
+  CALL_FAILED
+
+  // Suspicious patterns
+  BRUTE_FORCE_ATTEMPT
+  BOT_ACTIVITY_DETECTED
+  UNUSUAL_LOCATION_LOGIN
+  MULTIPLE_FAILED_OTPS
+  RAPID_SWIPE_PATTERN
+}
+
+enum SecurityEventSeverity {
+  INFO // Normal operations (login success, logout)
+  LOW // Minor anomalies (1-2 failed attempts)
+  MEDIUM // Concerning (multiple failures, rate limits)
+  HIGH // Serious (brute force, unauthorized access)
+  CRITICAL // Immediate action needed (account takeover attempts)
+}
+
+model SecurityEvent {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // Who — nullable for unauthenticated events (e.g. failed login attempts)
+  userId       String?               @db.Uuid
+  user         User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // What
+  eventType    SecurityEventType
+  severity     SecurityEventSeverity @default(INFO)
+  // Where / How
+  ipAddress    String?
+  userAgent    String?
+  deviceId     String? // fingerprint
+  platform     String? // ios | android | web
+  country      String?
+  city         String?
+  // Context
+  resourceType String? // "Profile" | "Match" | "Payment" etc.
+  resourceId   String? // the ID of what was accessed
+  description  String?               @db.Text
+  metadata     Json? // extra structured data
+  // Risk scoring
+  riskScore    Int                   @default(0) // 0-100
+  isReviewed   Boolean               @default(false)
+  reviewedBy   String?               @db.Uuid
+  reviewNote   String?
+  // Timing
+  createdAt    DateTime              @default(now())
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([severity])
+  @@index([ipAddress])
+  @@index([createdAt])
+  @@index([riskScore])
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+// Tracks every active device/session with rich metadata
+model DeviceSession {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @db.Uuid
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId         String    @db.Uuid // links to Session.id
+  deviceFingerprint String?
+  deviceName        String? // "iPhone 15 Pro", "Chrome on Windows"
+  platform          String? // ios | android | web
+  browser           String?
+  os                String?
+  ipAddress         String?
+  country           String?
+  city              String?
+  isTrusted         Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  lastActiveAt      DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  revokedAt         DateTime?
+  revokedReason     String?
+
+  @@index([userId])
+  @@index([ipAddress])
+  @@index([isActive])
+}
+
+// Suspicious IP tracking
+model BlockedIp {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ipAddress String    @unique
+  reason    String
+  blockedBy String? // "system" | adminUserId
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([ipAddress])
+}
+
+// Rate limit violations log
+model RateLimitViolation {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ipAddress   String?
+  userId      String?  @db.Uuid
+  endpoint    String
+  method      String
+  hitCount    Int      @default(1)
+  windowStart DateTime
+  windowEnd   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([ipAddress])
+  @@index([userId])
+  @@index([endpoint])
+  @@index([createdAt])
+}
+
+// GDPR / data compliance
+model DataRequest {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String // EXPORT | DELETE | RECTIFY
+  status      String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED
+  requestedAt DateTime  @default(now())
+  processedAt DateTime?
+  downloadUrl String? // signed R2 URL for export
+  expiresAt   DateTime?
+  ipAddress   String?
+
+  @@index([userId])
+  @@index([status])
+}

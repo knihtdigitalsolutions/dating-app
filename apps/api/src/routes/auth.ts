@@ -1,15 +1,9 @@
 /**
  * Auth Routes — Fully secured with activity logging at every step
- *
- * Every auth action is logged:
- * - OTP requests/failures/verifications
- * - Login success/failure
- * - Token refresh
- * - Logout
- * - Account lock detections
+ * Optimized for HttpOnly Cookies to eliminate XSS token-theft vectors.
  */
 
-import { FastifyInstance } from 'fastify'
+import { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
@@ -39,7 +33,38 @@ const verifyOtpSchema = z.object({
   deviceId: z.string().optional(),
 })
 
+// Cookie Configuration Constant
+const COOKIE_OPTIONS = {
+  path: '/',
+  httpOnly: true, // 防止 XSS 攻击的关键：JavaScript 无法读取此 Cookie
+  secure: process.env.NODE_ENV === 'production', // 仅在生产环境中要求 HTTPS
+  sameSite: 'lax' as const, // 防止 CSRF 攻击
+}
+
 export default async function authRoutes(app: FastifyInstance) {
+
+  // ── GET /auth/me ─────────────────────────────────────────
+  // Used by Zustand's initializeAuth() to verify ongoing sessions seamlessly
+  app.get('/me', { preHandler: [authenticate] }, async (req, reply) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      include: { profile: true, subscription: true },
+    })
+
+    if (!user) {
+      return reply.status(404).send({ success: false, error: 'User not found.' })
+    }
+
+    return reply.send({
+      success: true,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        hasProfile: !!user.profile,
+        plan: user.subscription?.plan || 'FREE',
+      },
+    })
+  })
 
   // ── POST /auth/otp/request ──────────────────────────────
   app.post('/otp/request', {
@@ -56,7 +81,6 @@ export default async function authRoutes(app: FastifyInstance) {
 
     const { phone } = body.data
 
-    // Check if OTP locked (too many failures previously)
     const otpLock = await isOtpLocked(phone)
     if (otpLock.locked) {
       await logSecurityEvent({
@@ -72,7 +96,6 @@ export default async function authRoutes(app: FastifyInstance) {
       })
     }
 
-    // Prevent OTP spam: max 1 per 2 minutes per phone
     const recentKey = RATE_KEYS.otpRequest(phone)
     const recent = await redis.get(recentKey)
     if (recent) {
@@ -83,13 +106,11 @@ export default async function authRoutes(app: FastifyInstance) {
       })
     }
 
-    // Find or create user
     let user = await prisma.user.findUnique({ where: { phone } })
     if (!user) {
       user = await prisma.user.create({ data: { phone } })
     }
 
-    // Check if account is banned
     if (user.isBanned) {
       await logSecurityEvent({
         userId: user.id, ipAddress: ip, userAgent: ua, platform: ctx?.platform,
@@ -100,7 +121,6 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.status(403).send({ success: false, error: 'Account suspended.', code: 'ACCOUNT_BANNED' })
     }
 
-    // Check account lock (brute force protection)
     const lock = await isAccountLocked(user.id)
     if (lock.locked) {
       await logSecurityEvent({
@@ -116,12 +136,10 @@ export default async function authRoutes(app: FastifyInstance) {
       })
     }
 
-    // Generate 6-digit OTP
     const code = Math.floor(100000 + Math.random() * 900000).toString()
     const hashed = await bcrypt.hash(code, 12)
     const expiresAt = new Date(Date.now() + 2 * 60 * 1000)
 
-    // Invalidate any previous unused OTPs
     await prisma.otpCode.updateMany({
       where: { phone, usedAt: null },
       data: { usedAt: new Date() },
@@ -133,14 +151,12 @@ export default async function authRoutes(app: FastifyInstance) {
 
     await redisSet(recentKey, '1', 120)
 
-    // Send SMS
     if (process.env.NODE_ENV !== 'development') {
       await sendOtp(phone, code)
     } else {
       console.log(`\n📱 DEV OTP for ${phone}: \x1b[33m${code}\x1b[0m\n`)
     }
 
-    // Log the event
     await logSecurityEvent({
       userId: user.id, ipAddress: ip, userAgent: ua, platform: ctx?.platform,
       eventType: 'OTP_REQUESTED', severity: 'INFO', riskScore: 0,
@@ -166,7 +182,6 @@ export default async function authRoutes(app: FastifyInstance) {
 
     const { phone, code, deviceId } = body.data
 
-    // Fail-fast: check per-phone attempt counter
     const attemptsKey = RATE_KEYS.otpVerify(phone)
     const attempts = parseInt(await redis.get(attemptsKey) || '0')
 
@@ -185,7 +200,6 @@ export default async function authRoutes(app: FastifyInstance) {
       })
     }
 
-    // Find valid OTP
     const otp = await prisma.otpCode.findFirst({
       where: { phone, usedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },
@@ -210,7 +224,6 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.status(401).send({ success: false, error: 'Invalid or expired code.', code: 'INVALID_OTP' })
     }
 
-    // Verify code
     const valid = await bcrypt.compare(code, otp.code)
     if (!valid) {
       await redis.incr(attemptsKey)
@@ -232,7 +245,6 @@ export default async function authRoutes(app: FastifyInstance) {
       })
     }
 
-    // ✅ Valid OTP — mark used, clear counters
     await prisma.otpCode.update({ where: { id: otp.id }, data: { usedAt: new Date() } })
     await redis.del(attemptsKey)
     await redis.del(RATE_KEYS.otpRequest(phone))
@@ -244,7 +256,6 @@ export default async function authRoutes(app: FastifyInstance) {
       req
     )
 
-    // Register device session for tracking
     await registerDeviceSession({
       userId: user.id,
       sessionId,
@@ -253,7 +264,6 @@ export default async function authRoutes(app: FastifyInstance) {
       platform: ctx?.platform,
     })
 
-    // Log success
     await logSecurityEvent({
       userId: user.id, ipAddress: ip, userAgent: ua, platform: ctx?.platform,
       deviceId: deviceId || ctx?.deviceFingerprint,
@@ -268,13 +278,15 @@ export default async function authRoutes(app: FastifyInstance) {
       description: 'OTP verified successfully',
     })
 
-    // Update last seen
     await prisma.user.update({ where: { id: user.id }, data: { lastSeen: new Date() } })
 
+    // 🌟 SECURE INJECTION: Stream tokens directly into HttpOnly Cookies
+    setAuthCookies(reply, accessToken, refreshToken)
+
+    // Return safely sanitized telemetry back to Zustand UI state tracking
     return reply.send({
       success: true,
       data: {
-        tokens: { accessToken, refreshToken, expiresIn: 900 },
         user: {
           id: user.id,
           phone: user.phone,
@@ -291,7 +303,8 @@ export default async function authRoutes(app: FastifyInstance) {
     const ua  = req.headers['user-agent'] as string
     const ctx = (req as any).securityCtx
 
-    const refreshToken = (req.body as any)?.refreshToken || req.cookies?.refreshToken
+    // 🌟 SECURE INJECTION: Read the token from cookies instead of the request body
+    const refreshToken = req.cookies?.refresh_token
 
     if (!refreshToken) {
       return reply.status(401).send({ success: false, error: 'No refresh token provided.', code: 'NO_TOKEN' })
@@ -306,7 +319,6 @@ export default async function authRoutes(app: FastifyInstance) {
       })
 
       if (!session || session.revokedAt || session.expiresAt < new Date()) {
-        // Stolen/replayed token — this is serious
         await logSecurityEvent({
           ipAddress: ip, userAgent: ua, platform: ctx?.platform,
           eventType: 'TOKEN_REVOKED', severity: 'HIGH', riskScore: 70,
@@ -316,7 +328,6 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.status(401).send({ success: false, error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED' })
       }
 
-      // Revoke old session (rotation — one-time use)
       await prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } })
 
       const { accessToken, refreshToken: newRefreshToken, sessionId } = await createSession(
@@ -339,10 +350,10 @@ export default async function authRoutes(app: FastifyInstance) {
         description: 'Access token refreshed successfully',
       })
 
-      return reply.send({
-        success: true,
-        data: { tokens: { accessToken, refreshToken: newRefreshToken, expiresIn: 900 } },
-      })
+      // 🌟 SECURE INJECTION: Push rotated tokens back into cookies
+      setAuthCookies(reply, accessToken, newRefreshToken)
+
+      return reply.send({ success: true })
     } catch {
       await logSecurityEvent({
         ipAddress: ip, userAgent: ua, platform: ctx?.platform,
@@ -359,15 +370,18 @@ export default async function authRoutes(app: FastifyInstance) {
     const ua = req.headers['user-agent'] as string
     const ctx = (req as any).securityCtx
 
-    const authHeader = req.headers.authorization!
-    const token = authHeader.slice(7)
-    const payload = jwt.decode(token) as { iat: number }
+    // Clear access token out of memory arrays
+    const authHeader = req.headers.authorization
+    if (authHeader) {
+      const token = authHeader.slice(7)
+      const payload = jwt.decode(token) as { iat: number }
+      if (payload) {
+        await redisSet(RATE_KEYS.tokenBlacklist(req.userId + ':' + payload.iat), '1', 15 * 60)
+      }
+    }
 
-    // Blacklist the current access token for its remaining lifetime
-    await redisSet(RATE_KEYS.tokenBlacklist(req.userId + ':' + payload.iat), '1', 15 * 60)
-
-    // Revoke refresh token and device session
-    const { refreshToken } = (req.body as any) || {}
+    // 🌟 SECURE INJECTION: Target the incoming HttpOnly token for revocation
+    const refreshToken = req.cookies?.refresh_token
     if (refreshToken) {
       const session = await prisma.session.findUnique({ where: { refreshToken } })
       if (session) {
@@ -382,11 +396,14 @@ export default async function authRoutes(app: FastifyInstance) {
       description: 'User logged out',
     })
 
+    // 🌟 SECURE INJECTION: Instruct client to fully scrub tracking headers out of cookie storage
+    reply.clearCookie('access_token', COOKIE_OPTIONS)
+    reply.clearCookie('refresh_token', COOKIE_OPTIONS)
+
     return reply.send({ success: true, message: 'Logged out successfully.' })
   })
 
   // ── GET /auth/sessions ──────────────────────────────────
-  // User can see all their active devices/sessions
   app.get('/sessions', { preHandler: [authenticate] }, async (req, reply) => {
     const sessions = await prisma.deviceSession.findMany({
       where: { userId: req.userId, isActive: true },
@@ -396,7 +413,6 @@ export default async function authRoutes(app: FastifyInstance) {
   })
 
   // ── DELETE /auth/sessions/:sessionId ───────────────────
-  // User can revoke a specific device session remotely
   app.delete('/sessions/:sessionId', { preHandler: [authenticate] }, async (req, reply) => {
     const { sessionId } = req.params as { sessionId: string }
     const ip = getClientIp(req)
@@ -455,4 +471,17 @@ async function createSession(userId: string, plan: string, req: any) {
   })
 
   return { accessToken, refreshToken, expiresIn: 900, sessionId: session.id }
+}
+
+// Global cookie hydration controller
+function setAuthCookies(reply: FastifyReply, accessToken: string, refreshToken: string) {
+  reply.setCookie('access_token', accessToken, {
+    ...COOKIE_OPTIONS,
+    maxAge: 15 * 60, // 15 mins
+  })
+
+  reply.setCookie('refresh_token', refreshToken, {
+    ...COOKIE_OPTIONS,
+    maxAge: 7 * 24 * 60 * 60, // 7 days
+  })
 }

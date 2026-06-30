@@ -61,17 +61,28 @@ export default function PhoneScreen() {
     }
   }
 
-  const verifyOtp = async () => {
-    if (otp.length !== 6) return
+  // Inside your Expo verification trigger method:
+  const verifyOtp = async (codeToVerify?: string) => {
+    const finalOtp = codeToVerify || otp
+    if (finalOtp.length !== 6) return
+    
     setLoading(true)
     try {
-      const res = await api.post('/auth/otp/verify', { phone, code: otp })
+      const res = await api.post('/auth/otp/verify', { 
+        phone, 
+        code: finalOtp,
+        // Provide security context data natively
+        platform: Platform.OS, // 'ios' | 'android'
+        deviceName: Platform.select({ ios: 'iPhone', android: 'Android Device' }),
+        deviceFingerprint: 'unique-hardware-hash-or-token' // Use expo-application parameters if necessary
+      })
+      
       const { tokens, user } = res.data.data
       await setTokens(tokens.accessToken, tokens.refreshToken)
       setUser(user)
       router.replace(user.hasProfile ? '/(tabs)/discover' : '/(auth)/onboarding')
     } catch (err: any) {
-      Alert.alert('Wrong code', err.response?.data?.error || 'Incorrect OTP. Try again.')
+      Alert.alert('Wrong code', 'Incorrect OTP. Try again.')
       setOtp('')
     } finally {
       setLoading(false)
@@ -202,7 +213,7 @@ export default function PhoneScreen() {
             </View>
 
             <Pressable
-              onPress={verifyOtp}
+              onPress={() => verifyOtp()}
               disabled={loading || otp.length < 6}
               style={[
                 shared.btnGold,

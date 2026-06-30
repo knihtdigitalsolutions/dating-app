@@ -3,11 +3,23 @@
   "ui": "tui",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^db:generate", "^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "env": [
+        "NEXT_PUBLIC_API_URL",
+        "NEXT_PUBLIC_WS_URL",
+        "DATABASE_URL",
+        "SUPABASE_URL",
+        "SUPABASE_ANON_KEY",
+        "EXPO_PUBLIC_API_URL",
+        "EXPO_PUBLIC_WS_URL",
+        "EXPO_PUBLIC_SUPABASE_URL",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY"
+      ]
     },
     "dev": {
+      "dependsOn": ["^db:generate"],
       "cache": false,
       "persistent": true
     },
@@ -19,6 +31,9 @@
       "cache": false
     },
     "db:migrate": {
+      "cache": false
+    },
+     "clean": {
       "cache": false
     }
   }

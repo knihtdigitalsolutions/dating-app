@@ -36,11 +36,12 @@ export default function LoginPage() {
     if (!valid) { toast.error('Enter a valid phone number'); return }
     setLoading(true)
     try {
-      await api.post('/auth/otp/request', { phone })
+      await api.post('/api/auth/otp/request', { phone })
       setStep('otp')
       startCountdown()
       toast.success('Code sent to your phone')
     } catch (e: any) {
+      console.log(e)
       toast.error(e.response?.data?.error || 'Failed to send code')
     } finally { setLoading(false) }
   }
@@ -49,11 +50,12 @@ export default function LoginPage() {
     if (otp.length !== 6) return
     setLoading(true)
     try {
-      const res = await api.post('/auth/otp/verify', { phone, code: otp })
+      const res = await api.post('/api/auth/otp/verify', { phone, code: otp })
       const { tokens, user } = res.data.data
       await setTokens(tokens.accessToken, tokens.refreshToken)
       setUser(user)
-      router.push(user.hasProfile ? '/discover' : '/onboarding')
+      console.log(user)
+      router.push(user.hasProfile ? '/discover' : '/auth/onboarding')
     } catch (e: any) {
       toast.error(e.response?.data?.error || 'Incorrect code')
       setOtp('')
